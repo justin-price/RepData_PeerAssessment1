@@ -8,18 +8,150 @@ output:
 
 ## Loading and preprocessing the data
 
+```{r, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(scales)
+if (!file.exists("figure")) dir.create("figure")
+if (!file.exists("activity.csv")) unzip("activity.zip")
+activity_data <- read.csv("activity.csv")
+activity_data$date <- as.Date(activity_data$date,"%Y-%m-%d")
+activity_data$time <- as.POSIXct(formatC(activity_data$interval, 
+                                         width=4, flag="0"), format="%H%M")
 
+```
 
 ## What is mean total number of steps taken per day?
 
+1) Calculate the total number of steps taken per day
+```{r}
+activity_per_day <- activity_data %>% group_by(date) %>% 
+    summarize(total.steps = sum(steps,na.rm=TRUE))
+print(activity_per_day, n = nrow(activity_per_day))
+```
 
+2) If you do not understand the difference between a histogram and a barplot, research the difference between them. Make a histogram of the total number of steps taken each day
+```{r}
+# save as png
+png("figure/plot1.png")
+ggplot(data = activity_per_day, aes(x = date, y = total.steps)) +
+      geom_histogram(stat = "identity", fill = "purple") +
+      scale_x_date(labels=date_format("%d-%b"), breaks = "1 week") +
+      labs(title = "Total number of steps taken per day",
+           x = "Date", y = "Total number of steps")
+dev.off()
+# display for report
+ggplot(data = activity_per_day, aes(x = date, y = total.steps)) +
+      geom_histogram(stat = "identity", fill = "purple") +
+      scale_x_date(labels=date_format("%d-%b"), breaks = "1 week") +
+      labs(title = "Total number of steps taken per day",
+           x = "Date", y = "Total number of steps")
+```
+
+3) Calculate and report the mean and median of the total number of steps taken per day
+```{r}
+paste("mean:", mean(activity_per_day$total.steps))
+paste("median:", median(activity_per_day$total.steps))
+```
 
 ## What is the average daily activity pattern?
 
+1) Make a time series plot (i.e. type="l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+```{r}
+activity_by_time_of_day <- activity_data %>% group_by(time) %>% summarize(steps = mean(steps, na.rm = TRUE))
+# save as png
+png("figure/plot2.png")
+plot(steps ~ time, data = activity_by_time_of_day, type = "l")
+dev.off()
+# display for report
+plot(steps ~ time, data = activity_by_time_of_day, type = "l")
+```
 
+2) Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+index_max_steps <- which.max(activity_by_time_of_day$steps)
+paste("Time interval of max average steps: ",
+      format(activity_by_time_of_day$time[index_max_steps],"%H:%M"), 
+      "(index: ", index_max_steps, ")")
+```
 
 ## Imputing missing values
+1) Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs
+```{r}
+paste("Number of missing values: ", sum(is.na(activity_data)))
+```
 
+2) Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
 
+```{r}
+# Find mean steps for each interval and create a new column with these means
+activity_data2 <- within(activity_data, 
+                        intervalMean <- ave(steps, interval, FUN = function(x) mean(x, na.rm = TRUE)))
+```
+
+3) Create a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+# replace NAs with intervalMean
+activity_data2$steps[is.na(activity_data2$steps)] <- activity_data2$intervalMean[is.na(activity_data2$steps)]
+head(activity_data2)
+```
+
+4) Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+```{r}
+activity_per_day2 <- activity_data2 %>% group_by(date) %>% 
+    summarize(total.steps = sum(steps,na.rm=TRUE))
+png("figure/plot3.png")
+ggplot(data = activity_per_day2, aes(x = date, y = total.steps)) +
+      geom_histogram(stat = "identity", fill = "purple") +
+      scale_x_date(labels=date_format("%d-%b"), breaks = "1 week") +
+      labs(title = "Total number of steps taken per day",
+           x = "Date", y = "Total number of steps")
+dev.off()
+# display for report
+ggplot(data = activity_per_day2, aes(x = date, y = total.steps)) +
+      geom_histogram(stat = "identity", fill = "purple") +
+      scale_x_date(labels=date_format("%d-%b"), breaks = "1 week") +
+      labs(title = "Total number of steps taken per day",
+           x = "Date", y = "Total number of steps")
+paste("mean:", mean(activity_per_day2$total.steps))
+paste("median:", median(activity_per_day2$total.steps))
+print("The mean and median are now the same - removing the NA values has eliminated evidence of skewness in the distribution")
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+1) Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+``` {r}
+wkdays <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+activity_data2$isWeekday <- factor((weekdays(activity_data2$date) %in% wkdays), 
+         levels=c(FALSE, TRUE), labels=c('weekend', 'weekday'))
+```
+
+2) Make a panel plot containing a time series plot (i.e. type="l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.
+``` {r}
+library(lattice)
+library(reshape2)
+weekday_data <- activity_data2 %>% subset(isWeekday == "weekday") %>% group_by(interval) %>% summarize(weekday.mean.steps = mean(steps,na.rm=TRUE))
+weekend_data <- activity_data2 %>% subset(isWeekday == "weekend") %>% group_by(interval) %>% summarize(weekend.mean.steps = mean(steps,na.rm=TRUE))
+combo_df <- melt(data.frame(interval=weekday_data$interval, 
+                            weekday=weekday_data$weekday.mean.steps, 
+                            weekend=weekend_data$weekend.mean.steps),
+                 id.vars = "interval")
+colnames(combo_df) <- c("interval","isWeekday","mean.steps")
+png("figure/plot4.png")
+xyplot(mean.steps ~ interval | isWeekday, 
+       group = isWeekday, data = combo_df,
+       type = "l",
+       layout = c(1, 2),
+       col  = "blue",
+       xlab = "Interval", ylab = "Number of steps")
+dev.off()
+# display for report
+xyplot(mean.steps ~ interval | isWeekday, 
+       group = isWeekday, data = combo_df,
+       type = "l",
+       layout = c(1, 2),
+       col  = "blue",
+       xlab = "Interval", ylab = "Number of steps")
+```
